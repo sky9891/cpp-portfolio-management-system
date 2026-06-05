@@ -1,0 +1,8 @@
+#include "repositories/Repositories.h"
+#include <sqlite3.h>
+#include <stdexcept>
+
+HoldingRepository::HoldingRepository(Database& db):db_(db){}
+std::optional<Holding> HoldingRepository::find(int pid,int iid){ auto rows=db_.query("SELECT id,portfolio_id,instrument_id,quantity,average_price FROM holdings WHERE portfolio_id="+std::to_string(pid)+" AND instrument_id="+std::to_string(iid)); if(rows.empty()) return std::nullopt; auto&r=rows[0]; return Holding{std::stoi(r[0]),std::stoi(r[1]),std::stoi(r[2]),std::stoi(r[3]),std::stod(r[4])}; }
+void HoldingRepository::upsert(const Holding& h){ sqlite3_stmt* stmt{}; std::string sql="INSERT INTO holdings(portfolio_id,instrument_id,quantity,average_price) VALUES(?,?,?,?) ON CONFLICT(portfolio_id,instrument_id) DO UPDATE SET quantity=excluded.quantity, average_price=excluded.average_price"; if(sqlite3_prepare_v2(db_.raw(),sql.c_str(),-1,&stmt,nullptr)!=SQLITE_OK) throw std::runtime_error(sqlite3_errmsg(db_.raw())); sqlite3_bind_int(stmt,1,h.portfolioId); sqlite3_bind_int(stmt,2,h.instrumentId); sqlite3_bind_int(stmt,3,h.quantity); sqlite3_bind_double(stmt,4,h.averagePrice); if(sqlite3_step(stmt)!=SQLITE_DONE){std::string e=sqlite3_errmsg(db_.raw()); sqlite3_finalize(stmt); throw std::runtime_error(e);} sqlite3_finalize(stmt); }
+std::vector<Holding> HoldingRepository::listByPortfolio(int pid){ auto rows=db_.query("SELECT id,portfolio_id,instrument_id,quantity,average_price FROM holdings WHERE portfolio_id="+std::to_string(pid)+" AND quantity > 0 ORDER BY instrument_id"); std::vector<Holding> out; for(auto&r:rows) out.push_back({std::stoi(r[0]),std::stoi(r[1]),std::stoi(r[2]),std::stoi(r[3]),std::stod(r[4])}); return out; }
